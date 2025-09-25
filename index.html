@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Browser tab title -->
+    <title>Newy Rankings</title>
+    <meta name="description" content="Live rankings for NUAC Armwrestling Club." />
+
+    <!-- Tab icon / favicon -->
+    <link rel="icon" href="/logo-nobg.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/logo-nobg.png" />
+    <meta name="theme-color" content="#0b132b" />
+
+    <!-- Social share / preview cards -->
+    <meta property="og:title" content="Newy Rankings" />
+    <meta property="og:description" content="Live rankings for NUAC Armwrestling Club." />
+    <meta property="og:image" content="https://newyranks.netlify.app/logo-nobg.png" />
+    <meta property="og:url" content="https://newyranks.netlify.app/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Global reset to remove the white border & ensure full-height -->
+    <style>
+      html, body, #root { height: 100%; }
+      body { margin: 0; background: #0b132b; }
+      *, *::before, *::after { box-sizing: border-box; }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
