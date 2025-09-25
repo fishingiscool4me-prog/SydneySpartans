@@ -23,7 +23,7 @@ const CONFIG = {
   weightClasses: DISPLAY_CLASSES,
   branding: {
     clubName: "Sydney Spartans",
-    logoUrl: "/logo-nobg.png",          // <-- lives at public/logo.png
+    logoUrl: "/spartans_logo.png",          // <-- lives at public/logo.png
     backgroundImage: "/background.jpg", // <-- lives at public/background.jpg
   },
   photos: {
