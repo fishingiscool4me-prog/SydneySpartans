@@ -24,7 +24,7 @@ const CONFIG = {
   branding: {
     clubName: "Sydney Spartans",
     logoUrl: "/spartans_logo.png",          // <-- lives at public/logo.png
-    backgroundImage: "/background.jpg", // <-- lives at public/background.jpg
+    backgroundImage: "/spartans_bg.jpg", // <-- lives at public/background.jpg
   },
   photos: {
     byPlayerId: {
