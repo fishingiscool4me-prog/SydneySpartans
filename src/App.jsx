@@ -17,28 +17,28 @@ const DISPLAY_CLASSES = [
 /* Using gviz for fast-refresh CSVs */
 const CONFIG = {
   sheets: {
-    players: { id: "1oKakYJ_L4kpgw2FrPgRxaZHqa5BKgYXP5drXJ5bAuHw", gid: "1561293575" },
-    matches: { id: "16NFals1k03ibhtokiG9HzRe207mpKovxjLRNscDq1KI", gid: "573157689" },
+    players: { id: "15DuCXPZXtIG97V5pCod2kLkW4iqkb3kOBwoo7znwDDU", gid: "0" },
+    matches: { id: "1DGCu6nW9TNH-id5Xfsc4TkerwvJ1vh09uZrKmUfNMlU", gid: "0" },
   },
   weightClasses: DISPLAY_CLASSES,
   branding: {
-    clubName: "NUAC Armwrestling Club",
+    clubName: "Sydney Spartans",
     logoUrl: "/logo-nobg.png",          // <-- lives at public/logo.png
     backgroundImage: "/background.jpg", // <-- lives at public/background.jpg
   },
   photos: {
-  byPlayerId: {
-    // keys MUST match the player IDs in your Players sheet
-    aden_w: "/aden_champ.png",
-    tristan_c: "/tristan_champ.png",
-    wesley_h: "/wesley_champ.png",
-    yve_w: "/Yve_Champ_New.jpg",
-    luke_a: "/luke_champ.png",
-    moses_m: "/moses_champ.png",
+    byPlayerId: {
+      // keys MUST match the player IDs in your Players sheet
+      aden_w: "/aden_champ.png",
+      tristan_c: "/tristan_champ.png",
+      wesley_h: "/wesley_champ.png",
+      yve_w: "/Yve_Champ_New.jpg",
+      luke_a: "/luke_champ.png",
+      moses_m: "/moses_champ.png",
+    },
+    size: 72,   // circle size in the card header
+    ring: true, // white ring around the photo
   },
-  size: 72,   // circle size in the card header
-  ring: true, // white ring around the photo
-},
 
   defaultWindowDays: 30,
   livePollMs: 2000,
@@ -47,7 +47,6 @@ const CONFIG = {
 /* gviz (fast) CSV URL */
 const csvUrl = ({ id, gid }) =>
   `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&gid=${gid}`;
-
 
 /* ===================== HELPERS ===================== */
 const trim = (x) => (x ?? "").toString().trim();
