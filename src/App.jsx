@@ -134,20 +134,28 @@ function seedLadders(players, displayClasses) {
         if (ladders[wc]) ladders[wc].push(p);
       });
     });
+
   Object.keys(ladders).forEach((wc) => {
+    const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
+
     ladders[wc].sort((a, b) => {
-      const ar = a.current_rank ? +a.current_rank : Infinity;
-      const br = b.current_rank ? +b.current_rank : Infinity;
-      if (ar !== br) return ar - br;
+      // arm-specific starting rank (fallback to single-column if needed)
+      const aRank =
+        arm === "Right"
+          ? (a.current_rank_rh ? +a.current_rank_rh : (a.current_rank ? +a.current_rank : Infinity))
+          : (a.current_rank_lh ? +a.current_rank_lh : (a.current_rank ? +a.current_rank : Infinity));
+
+      const bRank =
+        arm === "Right"
+          ? (b.current_rank_rh ? +b.current_rank_rh : (b.current_rank ? +b.current_rank : Infinity))
+          : (b.current_rank_lh ? +b.current_rank_lh : (b.current_rank ? +b.current_rank : Infinity));
+
+      if (aRank !== bRank) return aRank - bRank;
       return a.name.localeCompare(b.name);
     });
   });
+
   return ladders;
-}
-function indexRanks(arr) {
-  const m = new Map();
-  arr.forEach((p, i) => m.set(p.id || "row_" + i, i + 1));
-  return m;
 }
 
 /* ===================== MATCH APPLICATION ===================== */
@@ -251,36 +259,73 @@ export default function App() {
     const mRows = await fetchCsv(csvUrl(CONFIG.sheets.matches));
 
     /* ---- Players ---- */
-    const p = pRows.map((raw, idx) => {
-      const r = normalizeRow(raw);
-      let rawId = trim(gv(r, "id", "player id", "player_id"));
-      let nm = trim(gv(r, "name", "display name", "display_name"));
-      let wc = trim(gv(r, "weight class", "weight_class"));
-      let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
-      let sr = trim(gv(r, "starting rank", "current_rank"));
+const p = pRows.map((raw, idx) => {
+  const r = normalizeRow(raw);
+  let rawId = trim(gv(r, "id", "player id", "player_id"));
+  let nm = trim(gv(r, "name", "display name", "display_name"));
+  let wc = trim(gv(r, "weight class", "weight_class"));
+  let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
 
-      if (!rawId && !nm && !wc) {
-        const vals = Object.values(raw || {});
-        rawId = trim(vals[0]);
-        nm = trim(vals[1]) || rawId;
-        wc = trim(vals[2]);
-        act = trim(vals[3] ?? "true");
-        sr = trim(vals[4]);
-      }
+  // NEW: separate starting ranks (Right / Left) with many header variants supported
+  const srRight = trim(
+    gv(
+      r,
+      "starting rank rh",
+      "starting rank right",
+      "starting rank (right)",
+      "start rh",
+      "start_right",
+      "start right",
+      "rh rank",
+      "rank rh",
+      "right rank"
+    )
+  );
+  const srLeft = trim(
+    gv(
+      r,
+      "starting rank lh",
+      "starting rank left",
+      "starting rank (left)",
+      "start lh",
+      "start_left",
+      "start left",
+      "lh rank",
+      "rank lh",
+      "left rank"
+    )
+  );
+  // Legacy single-column fallback
+  const srSingle = trim(gv(r, "starting rank", "current_rank"));
 
-      const safeId =
-        rawId ||
-        (nm ? nm.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") : "") ||
-        `anon_${idx}`;
+  // Fallback to first N columns if headers are missing
+  if (!rawId && !nm && !wc) {
+    const vals = Object.values(raw || {});
+    rawId = trim(vals[0]);
+    nm = trim(vals[1]) || rawId;
+    wc = trim(vals[2]);
+    act = trim(vals[3] ?? "true");
+    // if you have right/left ranks in fixed columns, you could also read them here
+  }
 
-      return {
-        id: safeId,
-        name: nm || safeId,
-        weight_class: wc,
-        active: yes(act),
-        current_rank: sr,
-      };
-    });
+  const safeId =
+    rawId ||
+    (nm ? nm.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") : "") ||
+    `anon_${idx}`;
+
+  return {
+    id: safeId,
+    name: nm || safeId,
+    weight_class: wc,
+    active: yes(act),
+
+    // Store both; use arm-specific one during seeding; fall back to single
+    current_rank_rh: srRight || srSingle || "",
+    current_rank_lh: srLeft  || srSingle || "",
+    current_rank: srSingle || "", // keep for compatibility
+  };
+});
+
 
     /* ---- Matches (deterministic + Badge? support) ---- */
     const m = mRows
