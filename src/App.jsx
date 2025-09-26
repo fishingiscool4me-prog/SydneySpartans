@@ -417,7 +417,7 @@ export default function App() {
       ? `linear-gradient(180deg, rgba(9,12,24,.85) 0%, rgba(9,12,24,.85) 60%, rgba(9,12,24,.9) 100%), url(${CONFIG.branding.backgroundImage})`
       : "#0b132b";
 
-  const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women and Men u60kg");
+  const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women");
 
   const pageStyle = {
     minHeight: "100vh",
