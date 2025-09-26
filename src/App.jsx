@@ -13,6 +13,7 @@ const DISPLAY_CLASSES = [
     .reverse()
     .flatMap((g) => ARMS.map((a) => `${g} ${a}`)),
 ];
+
 /* ===================== CONFIG ===================== */
 /* Using gviz for fast-refresh CSVs */
 const CONFIG = {
@@ -23,12 +24,11 @@ const CONFIG = {
   weightClasses: DISPLAY_CLASSES,
   branding: {
     clubName: "Sydney Spartans",
-    logoUrl: "/spartans_logo.png",          // <-- lives at public/logo.png
-    backgroundImage: "/spartans_bg.png", // <-- lives at public/background.jpg
+    logoUrl: "/spartans_logo.png",
+    backgroundImage: "/spartans_bg.png",
   },
   photos: {
     byPlayerId: {
-      // keys MUST match the player IDs in your Players sheet
       aden_w: "/aden_champ.png",
       tristan_c: "/tristan_champ.png",
       wesley_h: "/wesley_champ.png",
@@ -36,8 +36,8 @@ const CONFIG = {
       luke_a: "/luke_champ.png",
       moses_m: "/moses_champ.png",
     },
-    size: 72,   // circle size in the card header
-    ring: true, // white ring around the photo
+    size: 72,
+    ring: true,
   },
 
   defaultWindowDays: 30,
@@ -85,7 +85,7 @@ function parseDateTimeUTC(s) {
   const t = String(s || "").trim();
   if (!t) return null;
 
-  // 1) ISO: 2025-08-22 or 2025-08-22 19:45[:ss]
+  // 1) ISO
   let m =
     /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
@@ -93,21 +93,19 @@ function parseDateTimeUTC(s) {
     return new Date(Date.UTC(+y, +mo - 1, +d, +hh, +mi, +ss));
   }
 
-  // 2) Slash dates: M/D/YYYY or D/M/YYYY, optional time
+  // 2) Slash dates
   m =
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
     let a = +m[1], b = +m[2], y = +m[3];
-    // Assume M/D by default; if first part > 12, treat as D/M
     let mo = a > 12 ? b : a;
     let d  = a > 12 ? a : b;
     const hh = +(m[4] ?? 12), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
     return new Date(Date.UTC(y, mo - 1, d, hh, mi, ss));
   }
 
-  return null; // unknown format
+  return null;
 }
-
 
 /* ===================== ELIGIBILITY & SEEDING ===================== */
 /* Treat "women" the same as "u60kg" for eligibility */
@@ -139,7 +137,6 @@ function seedLadders(players, displayClasses) {
     const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
 
     ladders[wc].sort((a, b) => {
-      // arm-specific starting rank (fallback to single-column if needed)
       const aRank =
         arm === "Right"
           ? (a.current_rank_rh ? +a.current_rank_rh : (a.current_rank ? +a.current_rank : Infinity))
@@ -156,6 +153,13 @@ function seedLadders(players, displayClasses) {
   });
 
   return ladders;
+}
+
+/* ✅ This helper went missing; add it back */
+function indexRanks(arr) {
+  const m = new Map();
+  arr.forEach((p, i) => m.set(p.id || "row_" + i, i + 1));
+  return m;
 }
 
 /* ===================== MATCH APPLICATION ===================== */
@@ -259,73 +263,67 @@ export default function App() {
     const mRows = await fetchCsv(csvUrl(CONFIG.sheets.matches));
 
     /* ---- Players ---- */
-const p = pRows.map((raw, idx) => {
-  const r = normalizeRow(raw);
-  let rawId = trim(gv(r, "id", "player id", "player_id"));
-  let nm = trim(gv(r, "name", "display name", "display_name"));
-  let wc = trim(gv(r, "weight class", "weight_class"));
-  let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
+    const p = pRows.map((raw, idx) => {
+      const r = normalizeRow(raw);
+      let rawId = trim(gv(r, "id", "player id", "player_id"));
+      let nm = trim(gv(r, "name", "display name", "display_name"));
+      let wc = trim(gv(r, "weight class", "weight_class"));
+      let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
 
-  // NEW: separate starting ranks (Right / Left) with many header variants supported
-  const srRight = trim(
-    gv(
-      r,
-      "starting rank rh",
-      "starting rank right",
-      "starting rank (right)",
-      "start rh",
-      "start_right",
-      "start right",
-      "rh rank",
-      "rank rh",
-      "right rank"
-    )
-  );
-  const srLeft = trim(
-    gv(
-      r,
-      "starting rank lh",
-      "starting rank left",
-      "starting rank (left)",
-      "start lh",
-      "start_left",
-      "start left",
-      "lh rank",
-      "rank lh",
-      "left rank"
-    )
-  );
-  // Legacy single-column fallback
-  const srSingle = trim(gv(r, "starting rank", "current_rank"));
+      // separate starting ranks (Right/Left) + legacy fallback
+      const srRight = trim(
+        gv(
+          r,
+          "starting rank rh",
+          "starting rank right",
+          "starting rank (right)",
+          "start rh",
+          "start_right",
+          "start right",
+          "rh rank",
+          "rank rh",
+          "right rank"
+        )
+      );
+      const srLeft = trim(
+        gv(
+          r,
+          "starting rank lh",
+          "starting rank left",
+          "starting rank (left)",
+          "start lh",
+          "start_left",
+          "start left",
+          "lh rank",
+          "rank lh",
+          "left rank"
+        )
+      );
+      const srSingle = trim(gv(r, "starting rank", "current_rank"));
 
-  // Fallback to first N columns if headers are missing
-  if (!rawId && !nm && !wc) {
-    const vals = Object.values(raw || {});
-    rawId = trim(vals[0]);
-    nm = trim(vals[1]) || rawId;
-    wc = trim(vals[2]);
-    act = trim(vals[3] ?? "true");
-    // if you have right/left ranks in fixed columns, you could also read them here
-  }
+      if (!rawId && !nm && !wc) {
+        const vals = Object.values(raw || {});
+        rawId = trim(vals[0]);
+        nm = trim(vals[1]) || rawId;
+        wc = trim(vals[2]);
+        act = trim(vals[3] ?? "true");
+      }
 
-  const safeId =
-    rawId ||
-    (nm ? nm.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") : "") ||
-    `anon_${idx}`;
+      const safeId =
+        rawId ||
+        (nm ? nm.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") : "") ||
+        `anon_${idx}`;
 
-  return {
-    id: safeId,
-    name: nm || safeId,
-    weight_class: wc,
-    active: yes(act),
-
-    // Store both; use arm-specific one during seeding; fall back to single
-    current_rank_rh: srRight || srSingle || "",
-    current_rank_lh: srLeft  || srSingle || "",
-    current_rank: srSingle || "", // keep for compatibility
-  };
-});
-
+      return {
+        id: safeId,
+        name: nm || safeId,
+        weight_class: wc,
+        active: yes(act),
+        current_rank_rh: srRight || srSingle || "",
+        current_rank_lh: srLeft || srSingle || "",
+        current_rank: srSingle || "",
+      };
+    });
 
     /* ---- Matches (deterministic + Badge? support) ---- */
     const m = mRows
@@ -342,7 +340,7 @@ const p = pRows.map((raw, idx) => {
         let arm = trim(gv(r, "arm?", "arm")).toLowerCase();
 
         const badgeCol = trim(gv(r, "badge?", "badge"));
-        const badgeSuppressed = badgeCol !== "" && !yes(badgeCol); // explicit FALSE disables
+        const badgeSuppressed = badgeCol !== "" && !yes(badgeCol);
 
         if (!date && !win && !lose) {
           const vals = Object.values(raw || {});
@@ -407,14 +405,12 @@ const p = pRows.map((raw, idx) => {
   const limitFor = (wc) => (wc.startsWith("Open") ? 15 : 10);
 
   /* ---------- UI helpers / style ---------- */
-  const green = "#22c55e"; // winner highlight
   const gold = "#f5c542";
   const bgOverlay =
     CONFIG.branding.backgroundImage
       ? `linear-gradient(180deg, rgba(9,12,24,.85) 0%, rgba(9,12,24,.85) 60%, rgba(9,12,24,.9) 100%), url(${CONFIG.branding.backgroundImage})`
       : "#0b132b";
 
-  // Rename u60kg ladder headers to "u60KG and women"
   const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women and Men u60kg");
 
   const pageStyle = {
@@ -618,7 +614,7 @@ const p = pRows.map((raw, idx) => {
                               ↑ {jump > 0 ? jump : delta}
                             </span>
                           )}
-                          {isRecentTakeover && <span title="Took rank" style={{ color: "#f5c542" }}>★</span>}
+                          {isRecentTakeover && <span title="Took rank" style={{ color: gold }}>★</span>}
                           {isRecentDefense && <span title="Defended">🛡️</span>}
                         </div>
                         <div style={subStyle}>Base: {p.weight_class}</div>
