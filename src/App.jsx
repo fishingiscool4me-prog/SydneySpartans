@@ -41,6 +41,7 @@ const CONFIG = {
       josh_b: "/josh_champ.png",
       peppe_p: "/peppe_champ.png",
       brooke_h: "/brooke_champ.png",
+      edward_s: "/ed_champ.png",
     },
     size: 72,
     ring: true,
