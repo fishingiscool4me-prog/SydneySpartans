@@ -115,6 +115,21 @@ function parseDateTimeUTC(s) {
   return null;
 }
 
+/* NEW: Parse "Injured?" column: RIGHT/LEFT (also R/L, BOTH, or comma lists) */
+function parseInjury(val) {
+  const t = String(val || "").toLowerCase().trim();
+  if (!t) return { injuredRight: false, injuredLeft: false };
+  const parts = t.split(/[,\s/;|]+/).filter(Boolean);
+  const set = new Set(parts);
+  const isRight = set.has("right") || set.has("r");
+  const isLeft  = set.has("left")  || set.has("l");
+  const isBoth  = set.has("both");
+  return {
+    injuredRight: isBoth || isRight,
+    injuredLeft:  isBoth || isLeft,
+  };
+}
+
 /* ===================== ELIGIBILITY & SEEDING ===================== */
 /* Treat "women" the same as "u60kg" for eligibility */
 function eligibleClassesFor(player) {
@@ -137,7 +152,15 @@ function seedLadders(players, displayClasses) {
     .forEach((p) => {
       const elig = eligibleClassesFor(p);
       elig.forEach((wc) => {
-        if (ladders[wc]) ladders[wc].push(p);
+        const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
+
+        // NEW: exclude from specific arm if injured
+        const canEnter =
+          arm === "Right" ? !p.injuredRight :
+          arm === "Left"  ? !p.injuredLeft  :
+          true;
+
+        if (canEnter && ladders[wc]) ladders[wc].push(p);
       });
     });
 
@@ -278,6 +301,10 @@ export default function App() {
       let wc = trim(gv(r, "weight class", "weight_class"));
       let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
 
+      // NEW: read Injured? column
+      const injCol = trim(gv(r, "injured?", "injured", "injury"));
+      const { injuredRight, injuredLeft } = parseInjury(injCol);
+
       // separate starting ranks (Right/Left) + legacy fallback
       const srRight = trim(
         gv(
@@ -327,6 +354,11 @@ export default function App() {
         name: nm || safeId,
         weight_class: wc,
         active: yes(act),
+
+        // NEW: arm-specific injury flags
+        injuredRight,
+        injuredLeft,
+
         current_rank_rh: srRight || srSingle || "",
         current_rank_lh: srLeft || srSingle || "",
         current_rank: srSingle || "",
