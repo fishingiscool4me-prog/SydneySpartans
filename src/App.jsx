@@ -43,6 +43,9 @@ const CONFIG = {
       brooke_h: "/brooke_champ.png",
       edward_s: "/ed_champ.png",
       ime_king: "/ime_champ.png",
+      mario_t: "/mario_champ.png",
+      lachlan_c: "/lachlan_champ.png",
+      
     },
     size: 72,
     ring: true,
