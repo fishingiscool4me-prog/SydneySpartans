@@ -45,6 +45,7 @@ const CONFIG = {
       ime_king: "/ime_champ.png",
       mario_t: "/mario_champ.png",
       lachlan_c: "/lachlan_champ.png",
+      
     },
     size: 72,
     ring: true,
@@ -90,13 +91,12 @@ const gv = (obj, ...keys) => {
   return "";
 };
 
-/* Parse date/datetime as UTC (supports ISO and D/M/YYYY or M/D/YYYY; prefers AU) */
-function parseDateTimeUTC(s, opts = {}) {
-  const preferDMY = opts.preferDMY ?? true; // AU default
+/* Parse date/datetime as UTC (supports ISO and M/D/YYYY or D/M/YYYY) */
+function parseDateTimeUTC(s) {
   const t = String(s || "").trim();
   if (!t) return null;
 
-  // 1) ISO (YYYY-MM-DD[ hh:mm[:ss]])
+  // 1) ISO
   let m =
     /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
@@ -104,17 +104,13 @@ function parseDateTimeUTC(s, opts = {}) {
     return new Date(Date.UTC(+y, +mo - 1, +d, +hh, +mi, +ss));
   }
 
-  // 2) Slash dates (D/M/Y or M/D/Y). Prefer D/M/Y for ambiguity.
+  // 2) Slash dates
   m =
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
-    const a = +m[1], b = +m[2], y = +m[3];
-    let mo, d;
-    if (a > 12 && b <= 12) { d = a; mo = b; }        // clearly D/M
-    else if (b > 12 && a <= 12) { mo = a; d = b; }   // clearly M/D
-    else if (preferDMY)       { d = a; mo = b; }     // ambiguous → AU
-    else                      { mo = a; d = b; }
-
+    let a = +m[1], b = +m[2], y = +m[3];
+    let mo = a > 12 ? b : a;
+    let d  = a > 12 ? a : b;
     const hh = +(m[4] ?? 12), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
     return new Date(Date.UTC(y, mo - 1, d, hh, mi, ss));
   }
@@ -152,20 +148,30 @@ function eligibleClassesFor(player) {
   return labels;
 }
 
-/* Seed ladders with EVERYONE (active or not, injured or not) so history is stable */
 function seedLadders(players, displayClasses) {
   const ladders = Object.fromEntries(displayClasses.map((wc) => [wc, []]));
-  players.forEach((p) => {
-    const elig = eligibleClassesFor(p);
-    elig.forEach((wc) => {
-      if (ladders[wc]) ladders[wc].push(p);
+  players
+    .filter((p) => p.active)
+    .forEach((p) => {
+      const elig = eligibleClassesFor(p);
+      elig.forEach((wc) => {
+        const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
+
+        // NEW: exclude from specific arm if injured
+        const canEnter =
+          arm === "Right" ? !p.injuredRight :
+          arm === "Left"  ? !p.injuredLeft  :
+          true;
+
+        if (canEnter && ladders[wc]) ladders[wc].push(p);
+      });
     });
-  });
 
   Object.keys(ladders).forEach((wc) => {
     const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
 
     ladders[wc].sort((a, b) => {
+      // If a player has NO starting rank, treat as Infinity so they sink to the bottom (unranked).
       const aRank =
         arm === "Right"
           ? (a.current_rank_rh ? +a.current_rank_rh : (a.current_rank ? +a.current_rank : Infinity))
@@ -184,7 +190,7 @@ function seedLadders(players, displayClasses) {
   return ladders;
 }
 
-/* ✅ This helper went missing; add it back (still used for internal rank snapshots) */
+/* ✅ This helper went missing; add it back */
 function indexRanks(arr) {
   const m = new Map();
   arr.forEach((p, i) => m.set(p.id || "row_" + i, i + 1));
@@ -217,7 +223,6 @@ function applyMatchToLadder(ladder, match) {
 
 /* ===================== CORE REPLAY ===================== */
 function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
-  // Seed with ALL players so history doesn’t collapse when people go inactive/injured
   const ladders = seedLadders(players, displayClasses);
   const lastEventMap = new Map();
   const lastJumpMap = new Map();
@@ -228,10 +233,10 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   matches
     .map((m) => ({ ...m, _t: parseDateTimeUTC(m._dateTime)?.getTime() ?? 0 }))
     .sort((a, b) => {
-      if (a._t !== b._t) return a._t - b._t;                 // older dates first
-      const sa = a._seq ?? Infinity, sb = b._seq ?? Infinity; // optional seq column
-      if (sa !== sb) return sa - sb;
-      return (a._row ?? 0) - (b._row ?? 0);                   // finally: sheet order (top→bottom)
+      if (a._t !== b._t) return a._t - b._t;
+      if ((a._seq ?? Infinity) !== (b._seq ?? Infinity))
+        return (a._seq ?? Infinity) - (b._seq ?? Infinity);
+      return a._stableKey.localeCompare(b._stableKey);
     })
     .forEach((m) => {
       const when = new Date(m._t || 0);
@@ -273,7 +278,7 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   Object.keys(ladders).forEach((wc) => {
     const arr = ladders[wc];
     const ranks = indexRanks(arr);
-    out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) })); // internal ranks (unfiltered)
+    out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) }));
   });
 
   return { ladders: out, lastEventMap, lastJumpMap };
@@ -354,12 +359,12 @@ export default function App() {
         weight_class: wc,
         active: yes(act),
 
-        // arm-specific injury flags (used at render time only)
+        // NEW: arm-specific injury flags
         injuredRight,
         injuredLeft,
 
-        current_rank_rh: srRight || srSingle || "",
-        current_rank_lh: srLeft || srSingle || "",
+        current_rank_rh: srRight || srSingle || "",  // blank → sorted as Infinity (bottom)
+        current_rank_lh: srLeft || srSingle || "",   // blank → sorted as Infinity (bottom)
         current_rank: srSingle || "",
       };
     });
@@ -393,7 +398,7 @@ export default function App() {
         arm = arm.startsWith("l") ? "Left" : arm.startsWith("r") ? "Right" : "";
 
         const dt = time ? `${date} ${time}` : date;
-        const dtParsed = parseDateTimeUTC(dt); // AU-friendly
+        const dtParsed = parseDateTimeUTC(dt);
 
         const stableKey = [
           dtParsed ? dtParsed.toISOString() : "na",
@@ -410,7 +415,6 @@ export default function App() {
           _dateTime: dt,
           _seq: seq,
           _stableKey: stableKey,
-          _row: rowIndex,          // for same-day ordering priority
           weight_class: wc,
           winner_id: win,
           loser_id: lose,
@@ -432,7 +436,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Compute current ladders and window (history includes everyone; render filters)
+  // Compute current ladders and window
   const { nowData, pastData, cutoff } = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - (showBadges ? windowDays : 36500));
@@ -452,7 +456,6 @@ export default function App() {
       : "#0b132b";
 
   const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women");
-  const armOf = (wc) => (wc.endsWith(" Right") ? "Right" : "Left");
 
   const pageStyle = {
     minHeight: "100vh",
@@ -602,20 +605,9 @@ export default function App() {
 
       <div style={gridStyle}>
         {CONFIG.weightClasses.map((wc) => {
-          // FULL ladders (computed with everyone)
-          const fullNow = nowData.ladders[wc] || [];
-          const fullPast = pastData.ladders[wc] || [];
-
-          // Filter only at render: active + arm not injured
-          const arm = armOf(wc);
-          const eligible = (p) => p.active && (arm === "Right" ? !p.injuredRight : !p.injuredLeft);
-
-          const filteredNow = fullNow.filter(eligible);
-          const filteredPast = fullPast.filter(eligible);
-
-          // Display list + past ranks (contiguous indices among eligible)
-          const current = filteredNow.slice(0, limitFor(wc));
-          const pastRank = new Map(filteredPast.map((p, i) => [p.id, i + 1]));
+          const current = (nowData.ladders[wc] || []).slice(0, limitFor(wc));
+          const past = pastData.ladders[wc] || [];
+          const pastRank = new Map(past.map((p) => [p.id, p.rank]));
           const champion = current[0];
           const champPhoto = champion ? photoForPlayer(champion.id) : "";
 
@@ -643,10 +635,9 @@ export default function App() {
               </div>
 
               <div style={{ padding: 10 }}>
-                {current.map((p, idx) => {
-                  const displayRank = idx + 1; // contiguous rank among visible eligible players
+                {current.map((p) => {
                   const was = pastRank.get(p.id);
-                  const delta = was ? was - displayRank : 0;
+                  const delta = was ? was - p.rank : 0;
                   const evt = lastEventAt(wc, p.id);
                   const showBadge = showBadges && evt && evt.when >= cutoff;
 
@@ -658,7 +649,7 @@ export default function App() {
 
                   return (
                     <div key={`${wc}:${p.id}`} style={rowStyle}>
-                      <div style={rankStyle}>{displayRank}</div>
+                      <div style={rankStyle}>{p.rank}</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <span style={{ ...nameStyle, color: nameColor }}>{p.name}</span>
