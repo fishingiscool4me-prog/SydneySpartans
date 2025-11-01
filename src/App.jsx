@@ -118,7 +118,7 @@ function parseDateTimeUTC(s) {
   return null;
 }
 
-/* NEW: Parse "Injured?" column: RIGHT/LEFT (also R/L, BOTH, or comma lists) */
+/* Parse "Injured?" column: RIGHT/LEFT (also R/L, BOTH, or comma lists) */
 function parseInjury(val) {
   const t = String(val || "").toLowerCase().trim();
   if (!t) return { injuredRight: false, injuredLeft: false };
@@ -157,7 +157,7 @@ function seedLadders(players, displayClasses) {
       elig.forEach((wc) => {
         const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
 
-        // NEW: exclude from specific arm if injured
+        // exclude from specific arm if injured
         const canEnter =
           arm === "Right" ? !p.injuredRight :
           arm === "Left"  ? !p.injuredLeft  :
@@ -190,7 +190,7 @@ function seedLadders(players, displayClasses) {
   return ladders;
 }
 
-/* ✅ This helper went missing; add it back */
+/* helper */
 function indexRanks(arr) {
   const m = new Map();
   arr.forEach((p, i) => m.set(p.id || "row_" + i, i + 1));
@@ -224,8 +224,12 @@ function applyMatchToLadder(ladder, match) {
 /* ===================== CORE REPLAY ===================== */
 function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   const ladders = seedLadders(players, displayClasses);
-  const lastEventMap = new Map();
-  const lastJumpMap = new Map();
+
+  // Track positive events separately (robust badges)
+  const lastEventMap = new Map();     // winner's last positive event (takeover/defense)
+  const lastJumpMap = new Map();      // winner's last takeover jump size
+  const lastTakeoverMap = new Map();  // key -> Date
+  const lastDefenseMap = new Map();   // key -> Date
 
   const laddersForArm = (arm) =>
     Object.keys(ladders).filter((wc) => wc.endsWith(` ${arm}`));
@@ -256,20 +260,21 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
         ladders[wc] = newLadder;
 
         events.forEach((e) => {
+          if (m._badgeSuppressed) return;
           const wk = `${wc}:${e.winner_id}`;
-          const lk = `${wc}:${e.loser_id}`;
-          if (!m._badgeSuppressed) {
-            if (e.type === "defense") {
-              lastEventMap.set(wk, { type: "defense", when });
-              lastJumpMap.delete(wk);
-            }
-            if (e.type === "takeover") {
-              lastEventMap.set(wk, { type: "takeover", when });
-              lastJumpMap.set(wk, e.jump || 0);
-            }
-            lastEventMap.set(lk, { type: "lost", when });
-            lastJumpMap.delete(lk);
+          if (e.type === "defense") {
+            lastEventMap.set(wk, { type: "defense", when });
+            lastDefenseMap.set(wk, when);
+            lastJumpMap.delete(wk);
           }
+          if (e.type === "takeover") {
+            lastEventMap.set(wk, { type: "takeover", when });
+            lastTakeoverMap.set(wk, when);
+            lastJumpMap.set(wk, e.jump || 0);
+          }
+          // IMPORTANT: do NOT record "lost" for the loser. A loss should not wipe a recent positive badge.
+          // const lk = `${wc}:${e.loser_id}`;
+          // (no write to lastEventMap for loser)
         });
       }
     });
@@ -281,7 +286,7 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
     out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) }));
   });
 
-  return { ladders: out, lastEventMap, lastJumpMap };
+  return { ladders: out, lastEventMap, lastJumpMap, lastTakeoverMap, lastDefenseMap };
 }
 
 /* ===================== APP ===================== */
@@ -305,11 +310,11 @@ export default function App() {
       let wc = trim(gv(r, "weight class", "weight_class"));
       let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
 
-      // NEW: read Injured? column
+      // Injured? column
       const injCol = trim(gv(r, "injured?", "injured", "injury"));
       const { injuredRight, injuredLeft } = parseInjury(injCol);
 
-      // separate starting ranks (Right/Left) + legacy fallback
+      // arm-specific starting ranks + legacy fallback
       const srRight = trim(
         gv(
           r,
@@ -359,12 +364,11 @@ export default function App() {
         weight_class: wc,
         active: yes(act),
 
-        // NEW: arm-specific injury flags
         injuredRight,
         injuredLeft,
 
-        current_rank_rh: srRight || srSingle || "",  // blank → sorted as Infinity (bottom)
-        current_rank_lh: srLeft || srSingle || "",   // blank → sorted as Infinity (bottom)
+        current_rank_rh: srRight || srSingle || "",
+        current_rank_lh: srLeft || srSingle || "",
         current_rank: srSingle || "",
       };
     });
@@ -439,13 +443,14 @@ export default function App() {
   // Compute current ladders and window
   const { nowData, pastData, cutoff } = useMemo(() => {
     const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0); // normalize to start-of-day for comparisons
     cutoff.setDate(cutoff.getDate() - (showBadges ? windowDays : 36500));
     const past = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, cutoff);
     const now = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, null);
     return { nowData: now, pastData: past, cutoff };
   }, [players, matches, windowDays, showBadges]);
 
-  const lastEventAt = (wc, id) => nowData.lastEventMap.get(`${wc}:${id}`) || null;
+  const lastEventAt = (wc, id) => nowData.lastEventMap.get(`${wc}:${id}`) || null; // kept for compatibility
   const limitFor = (wc) => (wc.startsWith("Open") ? 15 : 10);
 
   /* ---------- UI helpers / style ---------- */
@@ -638,13 +643,16 @@ export default function App() {
                 {current.map((p) => {
                   const was = pastRank.get(p.id);
                   const delta = was ? was - p.rank : 0;
-                  const evt = lastEventAt(wc, p.id);
-                  const showBadge = showBadges && evt && evt.when >= cutoff;
 
-                  const isRecentTakeover = showBadge && evt?.type === "takeover";
-                  const isRecentDefense = showBadge && evt?.type === "defense";
+                  // Use positive-event maps for reliable badges
+                  const key = `${wc}:${p.id}`;
+                  const takeoverWhen = nowData.lastTakeoverMap.get(key) || null;
+                  const defenseWhen  = nowData.lastDefenseMap.get(key)  || null;
 
-                  const jump = nowData.lastJumpMap.get(`${wc}:${p.id}`) ?? 0;
+                  const isRecentTakeover = showBadges && takeoverWhen && takeoverWhen >= cutoff;
+                  const isRecentDefense  = showBadges && defenseWhen  && defenseWhen  >= cutoff;
+
+                  const jump = nowData.lastJumpMap.get(key) ?? 0;
                   const nameColor = isRecentTakeover || isRecentDefense ? "#22c55e" : "white";
 
                   return (
