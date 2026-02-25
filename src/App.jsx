@@ -12,12 +12,15 @@ const ARMS = ["Right", "Left"];
  * - Then heavier → lighter for the men's classes (Right/Left)
  */
 const DISPLAY_CLASSES = [
-  ...ARMS.map((a) => `u60kg ${a}`), // Women ladder (unchanged internally)
+  // Men classes first (heavy → light)
   ...ORDER_GROUPS
     .filter((g) => g !== "u60kg")
     .slice()
     .reverse()
     .flatMap((g) => ARMS.map((a) => `${g} ${a}`)),
+
+  // Women last
+  ...ARMS.map((a) => `u60kg ${a}`),
 ];
 
 /* ===================== CONFIG ===================== */
