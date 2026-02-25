@@ -2,13 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 
 /* ===================== GROUPS & DISPLAY ===================== */
-/* Light → Heavy + Open (no u65kg) */
-const ORDER_GROUPS = ["u60kg", "u75kg", "u85kg", "Open"];
+/* Women (u60kg) + Men classes u70kg → 100kg+ */
+const ORDER_GROUPS = ["u60kg", "u70kg", "u80kg", "u90kg", "u100kg", "100kg+"];
 const ARMS = ["Right", "Left"];
+
+/**
+ * Display order:
+ * - Women first (Right/Left)
+ * - Then heavier → lighter for the men's classes (Right/Left)
+ */
 const DISPLAY_CLASSES = [
-  ...ARMS.map((a) => `Open ${a}`),
+  ...ARMS.map((a) => `u60kg ${a}`), // Women ladder (unchanged internally)
   ...ORDER_GROUPS
-    .filter((g) => g !== "Open")
+    .filter((g) => g !== "u60kg")
     .slice()
     .reverse()
     .flatMap((g) => ARMS.map((a) => `${g} ${a}`)),
@@ -45,7 +51,6 @@ const CONFIG = {
       ime_king: "/ime_champ.png",
       mario_t: "/mario_champ.png",
       lachlan_c: "/lachlan_champ.png",
-      
     },
     size: 72,
     ring: true,
@@ -98,7 +103,9 @@ function parseDateTimeUTC(s) {
 
   // 1) ISO
   let m =
-    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(
+      t
+    );
   if (m) {
     const [, y, mo, d, hh = "12", mi = "0", ss = "0"] = m;
     return new Date(Date.UTC(+y, +mo - 1, +d, +hh, +mi, +ss));
@@ -106,12 +113,18 @@ function parseDateTimeUTC(s) {
 
   // 2) Slash dates
   m =
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(
+      t
+    );
   if (m) {
-    let a = +m[1], b = +m[2], y = +m[3];
+    let a = +m[1],
+      b = +m[2],
+      y = +m[3];
     let mo = a > 12 ? b : a;
-    let d  = a > 12 ? a : b;
-    const hh = +(m[4] ?? 12), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
+    let d = a > 12 ? a : b;
+    const hh = +(m[4] ?? 12),
+      mi = +(m[5] ?? 0),
+      ss = +(m[6] ?? 0);
     return new Date(Date.UTC(y, mo - 1, d, hh, mi, ss));
   }
 
@@ -125,11 +138,11 @@ function parseInjury(val) {
   const parts = t.split(/[,\s/;|]+/).filter(Boolean);
   const set = new Set(parts);
   const isRight = set.has("right") || set.has("r");
-  const isLeft  = set.has("left")  || set.has("l");
-  const isBoth  = set.has("both");
+  const isLeft = set.has("left") || set.has("l");
+  const isBoth = set.has("both");
   return {
     injuredRight: isBoth || isRight,
-    injuredLeft:  isBoth || isLeft,
+    injuredLeft: isBoth || isLeft,
   };
 }
 
@@ -155,32 +168,58 @@ function seedLadders(players, displayClasses) {
     .forEach((p) => {
       const elig = eligibleClassesFor(p);
       elig.forEach((wc) => {
-        const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
+        const arm = wc.endsWith(" Right")
+          ? "Right"
+          : wc.endsWith(" Left")
+          ? "Left"
+          : null;
 
         // exclude from specific arm if injured
         const canEnter =
-          arm === "Right" ? !p.injuredRight :
-          arm === "Left"  ? !p.injuredLeft  :
-          true;
+          arm === "Right"
+            ? !p.injuredRight
+            : arm === "Left"
+            ? !p.injuredLeft
+            : true;
 
         if (canEnter && ladders[wc]) ladders[wc].push(p);
       });
     });
 
   Object.keys(ladders).forEach((wc) => {
-    const arm = wc.endsWith(" Right") ? "Right" : wc.endsWith(" Left") ? "Left" : null;
+    const arm = wc.endsWith(" Right")
+      ? "Right"
+      : wc.endsWith(" Left")
+      ? "Left"
+      : null;
 
     ladders[wc].sort((a, b) => {
       // If a player has NO starting rank, treat as Infinity so they sink to the bottom (unranked).
       const aRank =
         arm === "Right"
-          ? (a.current_rank_rh ? +a.current_rank_rh : (a.current_rank ? +a.current_rank : Infinity))
-          : (a.current_rank_lh ? +a.current_rank_lh : (a.current_rank ? +a.current_rank : Infinity));
+          ? a.current_rank_rh
+            ? +a.current_rank_rh
+            : a.current_rank
+            ? +a.current_rank
+            : Infinity
+          : a.current_rank_lh
+          ? +a.current_rank_lh
+          : a.current_rank
+          ? +a.current_rank
+          : Infinity;
 
       const bRank =
         arm === "Right"
-          ? (b.current_rank_rh ? +b.current_rank_rh : (b.current_rank ? +b.current_rank : Infinity))
-          : (b.current_rank_lh ? +b.current_rank_lh : (b.current_rank ? +b.current_rank : Infinity));
+          ? b.current_rank_rh
+            ? +b.current_rank_rh
+            : b.current_rank
+            ? +b.current_rank
+            : Infinity
+          : b.current_rank_lh
+          ? +b.current_rank_lh
+          : b.current_rank
+          ? +b.current_rank
+          : Infinity;
 
       if (aRank !== bRank) return aRank - bRank;
       return a.name.localeCompare(b.name);
@@ -205,7 +244,12 @@ function applyMatchToLadder(ladder, match) {
   const events = [];
   if (wi !== -1 && li !== -1) {
     if (wi < li) {
-      events.push({ type: "defense", winner_id: match.winner_id, loser_id: match.loser_id, jump: 0 });
+      events.push({
+        type: "defense",
+        winner_id: match.winner_id,
+        loser_id: match.loser_id,
+        jump: 0,
+      });
       return { ladder, events };
     }
     if (wi > li) {
@@ -214,7 +258,12 @@ function applyMatchToLadder(ladder, match) {
       out.splice(wi, 1);
       out.splice(li, 0, moved);
       const jump = wi - li;
-      events.push({ type: "takeover", winner_id: match.winner_id, loser_id: match.loser_id, jump });
+      events.push({
+        type: "takeover",
+        winner_id: match.winner_id,
+        loser_id: match.loser_id,
+        jump,
+      });
       return { ladder: out, events };
     }
   }
@@ -226,10 +275,10 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   const ladders = seedLadders(players, displayClasses);
 
   // Track positive events separately (robust badges)
-  const lastEventMap = new Map();     // winner's last positive event (takeover/defense)
-  const lastJumpMap = new Map();      // winner's last takeover jump size
-  const lastTakeoverMap = new Map();  // key -> Date
-  const lastDefenseMap = new Map();   // key -> Date
+  const lastEventMap = new Map(); // winner's last positive event (takeover/defense)
+  const lastJumpMap = new Map(); // winner's last takeover jump size
+  const lastTakeoverMap = new Map(); // key -> Date
+  const lastDefenseMap = new Map(); // key -> Date
 
   const laddersForArm = (arm) =>
     Object.keys(ladders).filter((wc) => wc.endsWith(` ${arm}`));
@@ -273,8 +322,6 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
             lastJumpMap.set(wk, e.jump || 0);
           }
           // IMPORTANT: do NOT record "lost" for the loser. A loss should not wipe a recent positive badge.
-          // const lk = `${wc}:${e.loser_id}`;
-          // (no write to lastEventMap for loser)
         });
       }
     });
@@ -286,7 +333,13 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
     out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) }));
   });
 
-  return { ladders: out, lastEventMap, lastJumpMap, lastTakeoverMap, lastDefenseMap };
+  return {
+    ladders: out,
+    lastEventMap,
+    lastJumpMap,
+    lastTakeoverMap,
+    lastDefenseMap,
+  };
 }
 
 /* ===================== APP ===================== */
@@ -308,7 +361,8 @@ export default function App() {
       let rawId = trim(gv(r, "id", "player id", "player_id"));
       let nm = trim(gv(r, "name", "display name", "display_name"));
       let wc = trim(gv(r, "weight class", "weight_class"));
-      let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
+      let act =
+        trim(gv(r, "active", "currently active?", "currently active")) || "true";
 
       // Injured? column
       const injCol = trim(gv(r, "injured?", "injured", "injury"));
@@ -355,7 +409,12 @@ export default function App() {
 
       const safeId =
         rawId ||
-        (nm ? nm.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") : "") ||
+        (nm
+          ? nm
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_|_$/g, "")
+          : "") ||
         `anon_${idx}`;
 
       return {
@@ -445,20 +504,24 @@ export default function App() {
     const cutoff = new Date();
     cutoff.setHours(0, 0, 0, 0); // normalize to start-of-day for comparisons
     cutoff.setDate(cutoff.getDate() - (showBadges ? windowDays : 36500));
-    const past = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, cutoff);
+    const past = computeLaddersThroughDate(
+      players,
+      matches,
+      CONFIG.weightClasses,
+      cutoff
+    );
     const now = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, null);
     return { nowData: now, pastData: past, cutoff };
   }, [players, matches, windowDays, showBadges]);
 
   const lastEventAt = (wc, id) => nowData.lastEventMap.get(`${wc}:${id}`) || null; // kept for compatibility
-  const limitFor = (wc) => (wc.startsWith("Open") ? 15 : 10);
+  const limitFor = () => 15;
 
   /* ---------- UI helpers / style ---------- */
   const gold = "#f5c542";
-  const bgOverlay =
-    CONFIG.branding.backgroundImage
-      ? `linear-gradient(180deg, rgba(9,12,24,.85) 0%, rgba(9,12,24,.85) 60%, rgba(9,12,24,.9) 100%), url(${CONFIG.branding.backgroundImage})`
-      : "#0b132b";
+  const bgOverlay = CONFIG.branding.backgroundImage
+    ? `linear-gradient(180deg, rgba(9,12,24,.85) 0%, rgba(9,12,24,.85) 60%, rgba(9,12,24,.9) 100%), url(${CONFIG.branding.backgroundImage})`
+    : "#0b132b";
 
   const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women");
 
@@ -529,7 +592,7 @@ export default function App() {
     alignItems: "center",
   };
   const rankStyle = { width: 28, textAlign: "center", fontWeight: 800, opacity: 0.95 };
-  const nameStyle = { fontWeight: 700, letterSpacing: .2 };
+  const nameStyle = { fontWeight: 700, letterSpacing: 0.2 };
   const subStyle = { fontSize: 12, opacity: 0.85 };
 
   function startLiveMinute() {
@@ -562,17 +625,29 @@ export default function App() {
           />
         )}
         <div>
-          <h1 style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: .3 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: 0.3 }}>
             {CONFIG.branding.clubName} – Rankings
           </h1>
-          <div style={{ marginTop: 4, opacity: .85, fontSize: 13 }}>
+          <div style={{ marginTop: 4, opacity: 0.85, fontSize: 13 }}>
             active members only • competitive rankings • instant updates
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center", flexWrap: "wrap" }}>
-          <button style={button} onClick={loadAll}>Refresh now</button>
-          <button style={button} onClick={startLiveMinute}>Live (1 min)</button>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginLeft: "auto",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <button style={button} onClick={loadAll}>
+            Refresh now
+          </button>
+          <button style={button} onClick={startLiveMinute}>
+            Live (1 min)
+          </button>
           <span style={pill}>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <input
@@ -591,21 +666,47 @@ export default function App() {
               value={windowDays}
               onChange={(e) => setWindowDays(Math.max(0, parseInt(e.target.value || "0", 10)))}
               style={{
-                width: 64, marginLeft: 6, padding: "4px 8px",
-                borderRadius: 8, border: "1px solid rgba(255,255,255,.2)",
-                background: "rgba(255,255,255,.06)", color: "white"
+                width: 64,
+                marginLeft: 6,
+                padding: "4px 8px",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,.2)",
+                background: "rgba(255,255,255,.06)",
+                color: "white",
               }}
-            /> days
+            />{" "}
+            days
           </span>
         </div>
       </div>
 
       {/* Legend */}
-      <div style={{ marginBottom: 12, opacity: 0.95, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={pill}><span title="Took rank" style={{ color: gold }}>★</span> takeover</span>
-        <span style={pill}><span title="Defended">🛡️</span> defense</span>
-        <span style={pill}><span title="Upward jump" style={{ color: "#22c55e" }}>↑</span> positions gained</span>
-        <span style={{ opacity: .8, fontSize: 12 }}>(badges show only within the chosen window)</span>
+      <div
+        style={{
+          marginBottom: 12,
+          opacity: 0.95,
+          display: "flex",
+          gap: 16,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={pill}>
+          <span title="Took rank" style={{ color: gold }}>
+            ★
+          </span>{" "}
+          takeover
+        </span>
+        <span style={pill}>
+          <span title="Defended">🛡️</span> defense
+        </span>
+        <span style={pill}>
+          <span title="Upward jump" style={{ color: "#22c55e" }}>
+            ↑
+          </span>{" "}
+          positions gained
+        </span>
+        <span style={{ opacity: 0.8, fontSize: 12 }}>(badges show only within the chosen window)</span>
       </div>
 
       <div style={gridStyle}>
@@ -619,20 +720,26 @@ export default function App() {
           return (
             <section key={wc} style={cardStyle}>
               <div style={sectionHead}>
-                <strong style={{ fontSize: 16, letterSpacing: .3 }}>{prettyClassLabel(wc)}</strong>
+                <strong style={{ fontSize: 16, letterSpacing: 0.3 }}>
+                  {prettyClassLabel(wc)}
+                </strong>
                 {champion && (
                   <div style={champWrap} title={`Current #1: ${champion.name}`}>
-                    <span style={{ fontSize: 12, opacity: .85, marginRight: 4 }}>Champion</span>
+                    <span style={{ fontSize: 12, opacity: 0.85, marginRight: 4 }}>
+                      Champion
+                    </span>
                     {champPhoto ? (
                       <img src={champPhoto} alt={`${champion.name}`} style={champImg} />
                     ) : (
                       <div
                         style={{
-                          ...champImg, display: "grid", placeItems: "center",
-                          background: "rgba(255,255,255,.08)"
+                          ...champImg,
+                          display: "grid",
+                          placeItems: "center",
+                          background: "rgba(255,255,255,.08)",
                         }}
                       >
-                        <span style={{ fontSize: 11, opacity: .8 }}>No photo</span>
+                        <span style={{ fontSize: 11, opacity: 0.8 }}>No photo</span>
                       </div>
                     )}
                   </div>
@@ -647,10 +754,10 @@ export default function App() {
                   // Use positive-event maps for reliable badges
                   const key = `${wc}:${p.id}`;
                   const takeoverWhen = nowData.lastTakeoverMap.get(key) || null;
-                  const defenseWhen  = nowData.lastDefenseMap.get(key)  || null;
+                  const defenseWhen = nowData.lastDefenseMap.get(key) || null;
 
                   const isRecentTakeover = showBadges && takeoverWhen && takeoverWhen >= cutoff;
-                  const isRecentDefense  = showBadges && defenseWhen  && defenseWhen  >= cutoff;
+                  const isRecentDefense = showBadges && defenseWhen && defenseWhen >= cutoff;
 
                   const jump = nowData.lastJumpMap.get(key) ?? 0;
                   const nameColor = isRecentTakeover || isRecentDefense ? "#22c55e" : "white";
@@ -662,11 +769,18 @@ export default function App() {
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <span style={{ ...nameStyle, color: nameColor }}>{p.name}</span>
                           {isRecentTakeover && (jump > 0 || delta > 0) && (
-                            <span title={`Up ${jump > 0 ? jump : delta}`} style={{ color: "#22c55e", fontWeight: 800 }}>
+                            <span
+                              title={`Up ${jump > 0 ? jump : delta}`}
+                              style={{ color: "#22c55e", fontWeight: 800 }}
+                            >
                               ↑ {jump > 0 ? jump : delta}
                             </span>
                           )}
-                          {isRecentTakeover && <span title="Took rank" style={{ color: gold }}>★</span>}
+                          {isRecentTakeover && (
+                            <span title="Took rank" style={{ color: gold }}>
+                              ★
+                            </span>
+                          )}
                           {isRecentDefense && <span title="Defended">🛡️</span>}
                         </div>
                         <div style={subStyle}>Base: {p.weight_class}</div>
