@@ -2,25 +2,24 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 
 /* ===================== GROUPS & DISPLAY ===================== */
-/* Women (u60kg) + Men classes u70kg → 100kg+ */
-const ORDER_GROUPS = ["u60kg", "u70kg", "u80kg", "u90kg", "u100kg", "100kg+"];
+/* Youth + Women (u60kg) + Men classes u70kg → 100kg+ */
+const ORDER_GROUPS = ["youth", "u60kg", "u70kg", "u80kg", "u90kg", "u100kg", "100kg+"];
 const ARMS = ["Right", "Left"];
 
 /**
  * Display order:
- * - Women first (Right/Left)
- * - Then heavier → lighter for the men's classes (Right/Left)
+ * - Men classes first (heavy → light)
+ * - Then Women
+ * - Then Youth (very bottom)
  */
 const DISPLAY_CLASSES = [
-  // Men classes first (heavy → light)
   ...ORDER_GROUPS
-    .filter((g) => g !== "u60kg")
+    .filter((g) => g !== "u60kg" && g !== "youth")
     .slice()
     .reverse()
     .flatMap((g) => ARMS.map((a) => `${g} ${a}`)),
-
-  // Women last
   ...ARMS.map((a) => `u60kg ${a}`),
+  ...ARMS.map((a) => `youth ${a}`),
 ];
 
 /* ===================== CONFIG ===================== */
@@ -150,16 +149,25 @@ function parseInjury(val) {
 }
 
 /* ===================== ELIGIBILITY & SEEDING ===================== */
-/* Treat "women" the same as "u60kg" for eligibility */
+/* Treat "women" as "u60kg". Youth do NOT qualify for women's. */
 function eligibleClassesFor(player) {
   const raw = String(player.weight_class || "").trim();
-  const base = raw.toLowerCase() === "women" ? "u60kg" : raw;
+  const baseRaw = raw.toLowerCase();
+
+  const base =
+    baseRaw === "women" ? "u60kg" : baseRaw === "youth" ? "youth" : raw;
 
   const baseIdx = ORDER_GROUPS.indexOf(base);
   if (baseIdx === -1) return [];
+
   const labels = [];
   for (let i = baseIdx; i < ORDER_GROUPS.length; i++) {
-    for (const arm of ARMS) labels.push(`${ORDER_GROUPS[i]} ${arm}`);
+    const group = ORDER_GROUPS[i];
+
+    // ✅ Youth can NOT qualify for Women's (u60kg)
+    if (base === "youth" && group === "u60kg") continue;
+
+    for (const arm of ARMS) labels.push(`${group} ${arm}`);
   }
   return labels;
 }
@@ -324,7 +332,6 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
             lastTakeoverMap.set(wk, when);
             lastJumpMap.set(wk, e.jump || 0);
           }
-          // IMPORTANT: do NOT record "lost" for the loser. A loss should not wipe a recent positive badge.
         });
       }
     });
@@ -507,12 +514,7 @@ export default function App() {
     const cutoff = new Date();
     cutoff.setHours(0, 0, 0, 0); // normalize to start-of-day for comparisons
     cutoff.setDate(cutoff.getDate() - (showBadges ? windowDays : 36500));
-    const past = computeLaddersThroughDate(
-      players,
-      matches,
-      CONFIG.weightClasses,
-      cutoff
-    );
+    const past = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, cutoff);
     const now = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, null);
     return { nowData: now, pastData: past, cutoff };
   }, [players, matches, windowDays, showBadges]);
@@ -526,7 +528,8 @@ export default function App() {
     ? `linear-gradient(180deg, rgba(9,12,24,.85) 0%, rgba(9,12,24,.85) 60%, rgba(9,12,24,.9) 100%), url(${CONFIG.branding.backgroundImage})`
     : "#0b132b";
 
-  const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women");
+  const prettyClassLabel = (wc) =>
+    wc.replace(/^u60kg\b/i, "Women").replace(/^youth\b/i, "Youth");
 
   const pageStyle = {
     minHeight: "100vh",
@@ -588,12 +591,7 @@ export default function App() {
     border: CONFIG.photos.ring ? "2px solid rgba(255,255,255,.65)" : "none",
     boxShadow: "0 0 0 3px rgba(255,255,255,.12)",
   };
-  const rowStyle = {
-    display: "flex",
-    gap: 12,
-    padding: "10px 12px",
-    alignItems: "center",
-  };
+  const rowStyle = { display: "flex", gap: 12, padding: "10px 12px", alignItems: "center" };
   const rankStyle = { width: 28, textAlign: "center", fontWeight: 800, opacity: 0.95 };
   const nameStyle = { fontWeight: 700, letterSpacing: 0.2 };
   const subStyle = { fontSize: 12, opacity: 0.85 };
@@ -636,28 +634,12 @@ export default function App() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginLeft: "auto",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <button style={button} onClick={loadAll}>
-            Refresh now
-          </button>
-          <button style={button} onClick={startLiveMinute}>
-            Live (1 min)
-          </button>
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center", flexWrap: "wrap" }}>
+          <button style={button} onClick={loadAll}>Refresh now</button>
+          <button style={button} onClick={startLiveMinute}>Live (1 min)</button>
           <span style={pill}>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={showBadges}
-                onChange={(e) => setShowBadges(e.target.checked)}
-              />
+              <input type="checkbox" checked={showBadges} onChange={(e) => setShowBadges(e.target.checked)} />
               Show badges
             </label>
           </span>
@@ -684,31 +666,10 @@ export default function App() {
       </div>
 
       {/* Legend */}
-      <div
-        style={{
-          marginBottom: 12,
-          opacity: 0.95,
-          display: "flex",
-          gap: 16,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={pill}>
-          <span title="Took rank" style={{ color: gold }}>
-            ★
-          </span>{" "}
-          takeover
-        </span>
-        <span style={pill}>
-          <span title="Defended">🛡️</span> defense
-        </span>
-        <span style={pill}>
-          <span title="Upward jump" style={{ color: "#22c55e" }}>
-            ↑
-          </span>{" "}
-          positions gained
-        </span>
+      <div style={{ marginBottom: 12, opacity: 0.95, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={pill}><span title="Took rank" style={{ color: gold }}>★</span> takeover</span>
+        <span style={pill}><span title="Defended">🛡️</span> defense</span>
+        <span style={pill}><span title="Upward jump" style={{ color: "#22c55e" }}>↑</span> positions gained</span>
         <span style={{ opacity: 0.8, fontSize: 12 }}>(badges show only within the chosen window)</span>
       </div>
 
@@ -723,25 +684,14 @@ export default function App() {
           return (
             <section key={wc} style={cardStyle}>
               <div style={sectionHead}>
-                <strong style={{ fontSize: 16, letterSpacing: 0.3 }}>
-                  {prettyClassLabel(wc)}
-                </strong>
+                <strong style={{ fontSize: 16, letterSpacing: 0.3 }}>{prettyClassLabel(wc)}</strong>
                 {champion && (
-                  <div style={champWrap} title={`Current #1: ${champion.name}`}>
-                    <span style={{ fontSize: 12, opacity: 0.85, marginRight: 4 }}>
-                      Champion
-                    </span>
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }} title={`Current #1: ${champion.name}`}>
+                    <span style={{ fontSize: 12, opacity: 0.85, marginRight: 4 }}>Champion</span>
                     {champPhoto ? (
                       <img src={champPhoto} alt={`${champion.name}`} style={champImg} />
                     ) : (
-                      <div
-                        style={{
-                          ...champImg,
-                          display: "grid",
-                          placeItems: "center",
-                          background: "rgba(255,255,255,.08)",
-                        }}
-                      >
+                      <div style={{ ...champImg, display: "grid", placeItems: "center", background: "rgba(255,255,255,.08)" }}>
                         <span style={{ fontSize: 11, opacity: 0.8 }}>No photo</span>
                       </div>
                     )}
@@ -754,7 +704,6 @@ export default function App() {
                   const was = pastRank.get(p.id);
                   const delta = was ? was - p.rank : 0;
 
-                  // Use positive-event maps for reliable badges
                   const key = `${wc}:${p.id}`;
                   const takeoverWhen = nowData.lastTakeoverMap.get(key) || null;
                   const defenseWhen = nowData.lastDefenseMap.get(key) || null;
@@ -772,18 +721,11 @@ export default function App() {
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <span style={{ ...nameStyle, color: nameColor }}>{p.name}</span>
                           {isRecentTakeover && (jump > 0 || delta > 0) && (
-                            <span
-                              title={`Up ${jump > 0 ? jump : delta}`}
-                              style={{ color: "#22c55e", fontWeight: 800 }}
-                            >
+                            <span title={`Up ${jump > 0 ? jump : delta}`} style={{ color: "#22c55e", fontWeight: 800 }}>
                               ↑ {jump > 0 ? jump : delta}
                             </span>
                           )}
-                          {isRecentTakeover && (
-                            <span title="Took rank" style={{ color: gold }}>
-                              ★
-                            </span>
-                          )}
+                          {isRecentTakeover && <span title="Took rank" style={{ color: gold }}>★</span>}
                           {isRecentDefense && <span title="Defended">🛡️</span>}
                         </div>
                         <div style={subStyle}>Base: {p.weight_class}</div>
